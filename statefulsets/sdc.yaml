@@ -53,6 +53,8 @@ spec:
         env:
         - name: SDC_DIST
           value: /sdc
+        - name: STREAMSETS_LIBRARIES_EXTRA_DIR
+          value: /sdc/streamsets-libs-extras
         - name: SDC_CONF_PARSER_LIMIT
           value: "5000000"
         volumeMounts:

@@ -1,25 +1,17 @@
----
-kind: StorageClass
-apiVersion: storage.k8s.io/v1beta1
-metadata:
-  name: default
-provisioner: kubernetes.io/gce-pd
-parameters:
-  type: pd-ssd
-  zone: us-west1-a
----
 apiVersion: v1
 kind: Service
 metadata:
   name: datacollector
   labels:
     app: datacollector
+  annotations:
+        service.beta.kubernetes.io/aws-load-balancer-internal: '0.0.0.0/0'
 spec:
+  type: LoadBalancer
   ports:
   - port: 18630
     targetPort: 18630
     name: ui
-  clusterIP: None
   selector:
     app: datacollector
 ---
@@ -34,20 +26,21 @@ spec:
     metadata:
       labels:
         app: datacollector
-      annotations:
-        pod.beta.kubernetes.io/init-containers: '[
-          {
-            "name": "init-datacollector-data",
-            "image": "busybox",
-            "command": ["sh", "-c", "chown -R 20159 /data /opt/streamsets-datacollector/streamsets-libs"],
-            "volumeMounts": [
-              {"name": "data", "mountPath": "/data", "subPath": "data"},
-              {"name": "data", "mountPath": "/opt/streamsets-datacollector/streamsets-libs", "subPath": "stagelibs"}
-            ]
-          }
-        ]'
     spec:
+      securityContext:
+        runAsUser: 0
       terminationGracePeriodSeconds: 10
+      initContainers:
+      - name: init-datacollector-data
+        image: streamsets/datacollector
+        volumeMounts:
+        - name: data
+          mountPath: /data
+          subPath: data
+        - name: data
+          mountPath: /sdc
+          subPath: sdc
+        command: ['sh', '-exc', 'ls -l /opt; cp -R /opt/streamsets-datacollector-3.3.0/* /sdc; chown -R 20159 /data /sdc']
       containers:
       - name: datacollector
         image: streamsets/datacollector
@@ -57,18 +50,21 @@ spec:
         readinessProbe:
           exec:
             command: ["curl", "127.0.0.1:18630/public-rest/ping"]
+        env:
+        - name: SDC_DIST
+          value: /sdc
+        - name: SDC_CONF_PARSER_LIMIT
+          value: "5000000"
         volumeMounts:
         - name: data
           mountPath: /data
           subPath: data
         - name: data
-          mountPath: /opt/streamsets-datacollector/streamsets-libs
-          subPath: stagelibs
+          mountPath: /sdc
+          subPath: sdc
   volumeClaimTemplates:
   - metadata:
       name: data
-      annotations:
-        volume.alpha.kubernetes.io/storage-class: default
     spec:
       accessModes: [ "ReadWriteOnce" ]
       resources:
